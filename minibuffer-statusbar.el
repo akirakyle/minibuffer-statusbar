@@ -39,25 +39,25 @@
 
 (defgroup minibuffer-statusbar ()
   "Use the idle minibuffer window to display a statusbar."
-  :prefix minibuffer-statusbar
+  :prefix "minibuffer-statusbar-"
   :group 'convenience)
 
 (defcustom minibuffer-statusbar-items 
   '((time :icon ""
-          :repeat 1
+          :repeat 2
           :function (lambda ()
                       (format-time-string "%Y-%m-%d • %I:%M:%S %p" (current-time)))
           :properties '('face '(:underline "red")))
     (cpu-freq :icon ""
-              :repeat 1
+              :repeat 3
               :function minibuffer-statusbar--cpu-freq
               :properties '('face 'italic))
-    (cpu-temp :icon ""
-              :repeat 1
+    (cpu-temp :icon ""
+              :repeat 10
               :function minibuffer-statusbar--cpu-temp
               :properties '('face 'italic))
     (battery :icon ""
-             :repeat 1
+             :repeat 30
              :function minibuffer-statusbar--battery
              :properties '('face '(:underline "green"))))
   "blah"
@@ -67,10 +67,6 @@
 (defcustom minibuffer-statusbar-line '(battery " | " cpu-freq " | " cpu-temp " | " time)
   "blah"
   :type 'list)
-
-(defcustom minibuffer-statusbar-refresh-interval 1
-  "The frequency at which the minibuffer-statusbar is updated, in seconds."
-  :type 'integer)
 
 ;;; Variables
 
@@ -136,6 +132,20 @@
                                (string-width str)) ? )
                str)))))
 
+(defun minibuffer-statusbar--refresh-interval ()
+  (seq-reduce
+   (lambda (a b) (cond ((and (numberp a) (numberp b)) (min a b))
+                       ((numberp a) a)
+                       ((numberp b) b)
+                       (t nil)))
+   (seq-map
+    (lambda (item)
+      (if (stringp item) nil
+        (let ((opts (cdr (assq item minibuffer-statusbar-items))))
+          (plist-get opts :repeat))))
+    minibuffer-statusbar-line)
+   nil))
+
 ;;;###autoload
 (define-minor-mode minibuffer-statusbar-mode
   "Display status info in the minibuffer window."
@@ -143,19 +153,17 @@
   (with-current-buffer minibuffer-statusbar--buffer
     (erase-buffer))
   (when minibuffer-statusbar--timers
-    (dolist (timer minibuffer-statusbar--timers) 
-      (cancel-timer timer))
+    (seq-map #'cancel-timer minibuffer-statusbar--timers)
     (setq minibuffer-statusbar--timers nil))
   (setq minibuffer-statusbar--strings nil)
-  (if minibuffer-statusbar-mode
-      (let ((timer (run-at-time nil minibuffer-statusbar-refresh-interval
-                                'minibuffer-statusbar--update)))
-        (push timer minibuffer-statusbar--timers)
-        (minibuffer-statusbar--start-timers))
-    (dolist (timer minibuffer-statusbar--timers) 
-      (cancel-timer timer))
-    (setq minibuffer-statusbar--timers nil)
-    (setq minibuffer-statusbar--strings nil)))
+  (cond (minibuffer-statusbar-mode
+         (minibuffer-statusbar--start-timers)
+         (push (run-at-time nil (minibuffer-statusbar--refresh-interval)
+                            'minibuffer-statusbar--update)
+               minibuffer-statusbar--timers))
+        (t (seq-map #'cancel-timer minibuffer-statusbar--timers)
+           (setq minibuffer-statusbar--timers nil)
+           (setq minibuffer-statusbar--strings nil))))
 
 (provide 'minibuffer-statusbar)
 ;;; minibuffer-statusbar.el ends here
