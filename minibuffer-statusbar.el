@@ -42,30 +42,14 @@
   :prefix "minibuffer-statusbar-"
   :group 'convenience)
 
-(defcustom minibuffer-statusbar-items 
-  '((time :icon ""
-          :repeat 60
-          :function (lambda ()
-                      (format-time-string "%Y-%m-%d • %I:%M %p" (current-time)))
-          :properties '('face '(:underline "red")))
-    (cpu-freq :icon ""
-              :repeat 3
-              :function minibuffer-statusbar--cpu-freq
-              :properties '('face 'italic))
-    (cpu-temp :icon ""
-              :repeat 10
-              :function minibuffer-statusbar--cpu-temp
-              :properties '('face 'italic))
-    (battery :icon ""
-             :repeat 30
-             :function minibuffer-statusbar--battery
-             :properties '('face '(:underline "green"))))
-  "blah"
-  :type '(alist :tag "statusbar item definitions"
-		:value-type (plist)))
-
 (defcustom minibuffer-statusbar-line
-  '(battery " | " cpu-freq " | " cpu-temp " | " time)
+  '((minibuffer-statusbar--battery . 30) " | "
+    (minibuffer-statusbar--cpu-freq . 3) " | "
+    (minibuffer-statusbar--cpu-temp . 10) " | "
+    ((lambda ()
+       (propertize
+        (concat " " (format-time-string "%Y-%m-%d • %I:%M:%S %p" (current-time)))
+        'face '(:underline "red"))) . 1))
   "blah"
   :type 'list)
 
@@ -83,49 +67,56 @@
     (buffer-string)))
 
 (defun minibuffer-statusbar--battery ()
-  (concat (string-trim
-           (minibuffer-statusbar--file-to-string 
-            "/sys/class/power_supply/cw2015-battery/capacity"))
-          "%"))
+  "get battery capacity"
+  (propertize
+   (concat " " 
+           (string-trim
+            (minibuffer-statusbar--file-to-string 
+             "/sys/class/power_supply/cw2015-battery/capacity"))
+           "%")
+   'face '(:underline "green")))
 
 (defun minibuffer-statusbar--cpu-temp ()
-  (concat (substring (string-trim
-                      (minibuffer-statusbar--file-to-string 
-                       "/sys/class/thermal/thermal_zone0/temp"))
-                     0 -3) "°C"))
+  "get cpu temperature in deg C"
+  (propertize
+   (concat " "
+           (substring (string-trim
+                       (minibuffer-statusbar--file-to-string 
+                        "/sys/class/thermal/thermal_zone0/temp"))
+                      0 -3) "°C")
+   'face '(:underline "blue")))
 
 (defun minibuffer-statusbar--cpu-freq ()
-         (concat (number-to-string
-                  (let ((a (split-string (shell-command-to-string
-                                          "grep 'cpu ' /proc/stat"))))
-                    (/ (* (+ (string-to-number (nth 1 a))
-                             (string-to-number (nth 3 a)))
-                          100)
-                       (+ (string-to-number (nth 1 a))
-                          (string-to-number (nth 3 a))
-                          (string-to-number (nth 4 a))))))
-                 "%"))
+  ;(propertize
+   (concat " "
+           (number-to-string
+            (let ((a (split-string (shell-command-to-string
+                                    "grep 'cpu ' /proc/stat"))))
+              (/ (* (+ (string-to-number (nth 1 a))
+                       (string-to-number (nth 3 a)))
+                    100)
+                 (+ (string-to-number (nth 1 a))
+                    (string-to-number (nth 3 a))
+                    (string-to-number (nth 4 a))))))
+           "%"))
+   ;'face '(:underline "yellow")))
 
 (defun minibuffer-statusbar--volume ()
   (pulseaudio-control--get-current-volume))
 
-(defun minibuffer-statusbar--update-item (strcons icon fn props)
-  (lambda ()
-    (setcar strcons (concat icon " " (apply 'propertize (funcall fn) props)))))
+
+(defun minibuffer-statusbar--update-item (fn strcons)
+  (lambda () (setcar strcons (funcall fn))))
 
 (defun minibuffer-statusbar--start-timers ()
   (dolist (item (reverse minibuffer-statusbar-line))
     (if (stringp item)
         (push item minibuffer-statusbar--strings)
       (push "" minibuffer-statusbar--strings)
-      (let* ((opts (cdr (assq item minibuffer-statusbar-items)))
-             (fn (minibuffer-statusbar--update-item
-                  minibuffer-statusbar--strings
-                  (plist-get opts :icon)
-                  (plist-get opts :function)
-                  (plist-get opts :properties))))
-        (push (run-at-time nil (plist-get opts :repeat) fn)
-              minibuffer-statusbar--timers)))))
+      (let ((fn (minibuffer-statusbar--update-item
+                 (car item) minibuffer-statusbar--strings))
+            (repeat (cdr item)))
+      (push (run-at-time nil repeat fn) minibuffer-statusbar--timers)))))
 
 (defun minibuffer-statusbar--update ()
   (with-current-buffer minibuffer-statusbar--buffer
@@ -133,7 +124,7 @@
     (insert 
      (let ((str (apply 'concat minibuffer-statusbar--strings)))
        (concat (make-string (- (frame-text-cols)
-                               (+ (string-width str) 2)) ? ) ;; right pad 2 spaces
+                               (+ (string-width str) 4)) ? ) ;; right pad 2 spaces
                str)))))
 
 (defun minibuffer-statusbar--refresh-interval ()
@@ -142,12 +133,8 @@
                        ((numberp a) a)
                        ((numberp b) b)
                        (t nil)))
-   (seq-map
-    (lambda (item)
-      (if (stringp item) nil
-        (let ((opts (cdr (assq item minibuffer-statusbar-items))))
-          (plist-get opts :repeat))))
-    minibuffer-statusbar-line)
+   (seq-map (lambda (item) (if (stringp item) nil (cdr item)))
+            minibuffer-statusbar-line)
    nil))
 
 ;;;###autoload
