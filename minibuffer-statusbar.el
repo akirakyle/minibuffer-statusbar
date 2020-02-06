@@ -44,9 +44,9 @@
 
 (defcustom minibuffer-statusbar-items 
   '((time :icon ""
-          :repeat 2
+          :repeat 60
           :function (lambda ()
-                      (format-time-string "%Y-%m-%d • %I:%M:%S %p" (current-time)))
+                      (format-time-string "%Y-%m-%d • %I:%M %p" (current-time)))
           :properties '('face '(:underline "red")))
     (cpu-freq :icon ""
               :repeat 3
@@ -64,7 +64,8 @@
   :type '(alist :tag "statusbar item definitions"
 		:value-type (plist)))
 
-(defcustom minibuffer-statusbar-line '(battery " | " cpu-freq " | " cpu-temp " | " time)
+(defcustom minibuffer-statusbar-line
+  '(battery " | " cpu-freq " | " cpu-temp " | " time)
   "blah"
   :type 'list)
 
@@ -76,19 +77,22 @@
 (defvar minibuffer-statusbar--strings nil)
 
 ;;; Private helper functions
+(defun minibuffer-statusbar--file-to-string (path)
+  (with-temp-buffer
+    (insert-file-contents path)
+    (buffer-string)))
+
 (defun minibuffer-statusbar--battery ()
   (concat (string-trim
-           (shell-command-to-string
-            "cat /sys/class/power_supply/cw2015-battery/capacity"))
-           "%"))
+           (minibuffer-statusbar--file-to-string 
+            "/sys/class/power_supply/cw2015-battery/capacity"))
+          "%"))
 
 (defun minibuffer-statusbar--cpu-temp ()
-  (concat (substring
-                  (string-trim
-                   (shell-command-to-string
-                    "cat /sys/class/thermal/thermal_zone0/temp"))
-                  0 -3)
-                 "°C"))
+  (concat (substring (string-trim
+                      (minibuffer-statusbar--file-to-string 
+                       "/sys/class/thermal/thermal_zone0/temp"))
+                     0 -3) "°C"))
 
 (defun minibuffer-statusbar--cpu-freq ()
          (concat (number-to-string
@@ -129,7 +133,7 @@
     (insert 
      (let ((str (apply 'concat minibuffer-statusbar--strings)))
        (concat (make-string (- (frame-text-cols)
-                               (string-width str)) ? )
+                               (+ (string-width str) 2)) ? ) ;; right pad 2 spaces
                str)))))
 
 (defun minibuffer-statusbar--refresh-interval ()
