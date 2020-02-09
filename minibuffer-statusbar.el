@@ -37,6 +37,15 @@
 
 ;;; Customization
 
+;; TODO: disk usage
+;; TODO: network
+;; https://github.com/tromey/emacs-network-manager/blob/master/NetworkManager.el
+;; https://elpa.gnu.org/packages/enwc.html
+;; https://github.com/Kodkollektivet/emacs-nm
+;; https://github.com/nicferrier/emacs-nm
+;; TODO: fix all the icons changing when propertized
+;; TODO: maybe do backlight and pulseaudo as simple variables instead of functions
+
 (defgroup minibuffer-statusbar ()
   "Use the idle minibuffer window to display a statusbar."
   :prefix "minibuffer-statusbar-"
@@ -44,12 +53,13 @@
 
 (defcustom minibuffer-statusbar-line
   '((minibuffer-statusbar--battery . 30) " | "
+    (minibuffer-statusbar--memory . 10) " | "
     (minibuffer-statusbar--cpu-freq . 3) " | "
     (minibuffer-statusbar--cpu-temp . 10) " | "
     ((lambda ()
        (propertize
-        (concat " " (format-time-string "%Y-%m-%d • %I:%M:%S %p" (current-time)))
-        'face '(:underline "red"))) . 1))
+        (concat " " (format-time-string "%Y-%m-%d %a • %I:%M %p" (current-time)))
+        'face '(:underline "red"))) . 60))
   "blah"
   :type 'list)
 
@@ -59,6 +69,7 @@
 
 (defvar minibuffer-statusbar--timers nil)
 (defvar minibuffer-statusbar--strings nil)
+(defvar minibuffer-statusbar--prev-cpus nil)
 
 ;;; Private helper functions
 (defun minibuffer-statusbar--file-to-string (path)
@@ -66,8 +77,31 @@
     (insert-file-contents path)
     (buffer-string)))
 
+(defun minibuffer-statusbar--file-parser (path parser prefixes)
+  (with-temp-buffer
+    (insert-file-contents path)
+    (mapcar (lambda (prefix)
+              (save-excursion
+                (re-search-forward (concat "^" prefix "\\(.*\\)$"))
+                (funcall parser (match-string 1))))
+            prefixes)))
+
+(defun minibuffer-statusbar--memory ()
+  "get memory usage"
+  (let ((parsed (minibuffer-statusbar--file-parser
+                 "/proc/meminfo" 'string-to-number
+                 '("MemTotal:" "MemAvailable:" "SwapTotal:" "SwapFree:"))))
+    (seq-let (tot avail swp-tot swp-free) parsed
+      (let* ((mem (/ (* (- tot avail) 100) tot))
+             (swp (/ (- swp-tot swp-free) 1000))
+             (swp-str (if (zerop swp) "" (format " %dMB Swapped" swp))))
+        (propertize (format " %d%%%s" mem swp-str)
+                    'face '(:underline "green"))))))
+
 (defun minibuffer-statusbar--battery ()
   "get battery capacity"
+  ;; TODO make icon follow capacity
+  ;; TODO message when battery low
   (propertize
    (concat " " 
            (string-trim
@@ -86,24 +120,42 @@
                       0 -3) "°C")
    'face '(:underline "blue")))
 
+;; https://stackoverflow.com/questions/23367857/accurate-calculation-of-cpu-usage-given-in-percentage-in-linux
 (defun minibuffer-statusbar--cpu-freq ()
-  ;(propertize
-   (concat " "
-           (number-to-string
-            (let ((a (split-string (shell-command-to-string
-                                    "grep 'cpu ' /proc/stat"))))
-              (/ (* (+ (string-to-number (nth 1 a))
-                       (string-to-number (nth 3 a)))
-                    100)
-                 (+ (string-to-number (nth 1 a))
-                    (string-to-number (nth 3 a))
-                    (string-to-number (nth 4 a))))))
-           "%"))
-   ;'face '(:underline "yellow")))
+  "get cpu usage"
+  (let ((cpus nil))
+    (with-temp-buffer
+      (insert-file-contents "/proc/stat")
+      (while (re-search-forward "^cpu\\([[:digit:]]*\\) \\(.*\\)$" nil t)
+        (let* ((cpu-str (match-string 1))
+               (stats-strs (match-string 2))
+               (stats (mapcar 'string-to-number (split-string stats-strs))))
+          (seq-let (user nice system idle iowait irq softirq steal
+                         guest guest-nice) stats
+            (push (list cpu-str
+                        (+ user nice system irq softirq steal)
+                        (+ idle iowait))
+                  cpus)))))
+    (let* ((cpus (reverse cpus))
+           (fmt-percent-fn
+            (lambda (curr prev)
+              (if (not (string= (car curr) (car prev)))
+                  (error "Cpu order changed? curr:%s prev:%s" (car curr) (car prev)))
+              (let* ((cpu (car curr))
+                     (cpu-str (if (string= "" cpu) " " (concat " "cpu ":")))
+                     (diff-used (- (nth 1 curr) (nth 1 prev)))
+                     (diff-idle (- (nth 2 curr) (nth 2 prev)))
+                     (percent (/ (* 100 diff-used) (+ diff-used diff-idle))))
+                (format "%s%2d%%" cpu-str percent))))
+           (strs (seq-mapn fmt-percent-fn cpus minibuffer-statusbar--prev-cpus)))
+      (setq minibuffer-statusbar--prev-cpus cpus)
+      (propertize (apply 'concat strs) 'face '(:underline "green")))))
 
 (defun minibuffer-statusbar--volume ()
   (pulseaudio-control--get-current-volume))
 
+(defun minibuffer-statusbar--brightness ())
+  ;;(pulseaudio-control--get-current-volume))
 
 (defun minibuffer-statusbar--update-item (fn strcons)
   (lambda () (setcar strcons (funcall fn))))
