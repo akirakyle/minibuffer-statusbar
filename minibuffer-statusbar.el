@@ -37,14 +37,12 @@
 
 ;;; Customization
 
-;; TODO: disk usage
 ;; TODO: network
 ;; https://github.com/tromey/emacs-network-manager/blob/master/NetworkManager.el
 ;; https://elpa.gnu.org/packages/enwc.html
 ;; https://github.com/Kodkollektivet/emacs-nm
 ;; https://github.com/nicferrier/emacs-nm
 ;; TODO: fix all the icons changing when propertized
-;; TODO: maybe do backlight and pulseaudo as simple variables instead of functions
 
 (defgroup minibuffer-statusbar ()
   "Use the idle minibuffer window to display a statusbar."
@@ -53,7 +51,8 @@
 
 (defcustom minibuffer-statusbar-line
   '((minibuffer-statusbar--battery . 30) " | "
-    (minibuffer-statusbar--memory . 10) " | "
+    (minibuffer-statusbar--disk-free . 30) " | "
+    (minibuffer-statusbar--memory . 5) " | "
     (minibuffer-statusbar--cpu-freq . 3) " | "
     (minibuffer-statusbar--cpu-temp . 10) " | "
     ((lambda ()
@@ -85,6 +84,15 @@
                 (re-search-forward (concat "^" prefix "\\(.*\\)$"))
                 (funcall parser (match-string 1))))
             prefixes)))
+
+;; consider using `file-system-info' in emacs 27
+(defun minibuffer-statusbar--disk-free ()
+  "get disk usage"
+  (let* ((out (shell-command-to-string "df -h --output=pcent,used,size /"))
+         (strs (split-string (nth 1 (split-string out "\n")))))
+    (seq-let (percent used size) strs
+      (propertize (format " %s %s/%s" percent used size)
+                  'face '(:underline "green")))))
 
 (defun minibuffer-statusbar--memory ()
   "get memory usage"
@@ -150,12 +158,6 @@
            (strs (seq-mapn fmt-percent-fn cpus minibuffer-statusbar--prev-cpus)))
       (setq minibuffer-statusbar--prev-cpus cpus)
       (propertize (apply 'concat strs) 'face '(:underline "green")))))
-
-(defun minibuffer-statusbar--volume ()
-  (pulseaudio-control--get-current-volume))
-
-(defun minibuffer-statusbar--brightness ())
-  ;;(pulseaudio-control--get-current-volume))
 
 (defun minibuffer-statusbar--update-item (fn strcons)
   (lambda () (setcar strcons (funcall fn))))
