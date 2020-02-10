@@ -37,11 +37,6 @@
 
 ;;; Customization
 
-;; TODO: network
-;; https://github.com/tromey/emacs-network-manager/blob/master/NetworkManager.el
-;; https://elpa.gnu.org/packages/enwc.html
-;; https://github.com/Kodkollektivet/emacs-nm
-;; https://github.com/nicferrier/emacs-nm
 ;; TODO: fix all the icons changing when propertized
 
 (defgroup minibuffer-statusbar ()
@@ -55,10 +50,8 @@
     (minibuffer-statusbar--memory . 5) " | "
     (minibuffer-statusbar--cpu-freq . 3) " | "
     (minibuffer-statusbar--cpu-temp . 10) " | "
-    ((lambda ()
-       (propertize
-        (concat " " (format-time-string "%Y-%m-%d %a • %I:%M %p" (current-time)))
-        'face '(:underline "red"))) . 60))
+    (minibuffer-statusbar--date . 3600) " | "
+    (minibuffer-statusbar--time . 60))
   "blah"
   :type 'list)
 
@@ -85,13 +78,23 @@
                 (funcall parser (match-string 1))))
             prefixes)))
 
+(defun minibuffer-statusbar--date ()
+  "get date"
+  (format "%s %s" (all-the-icons-faicon "calendar" :v-adjust 0.0)
+          (format-time-string "%Y-%m-%d %a" (current-time))))
+
+(defun minibuffer-statusbar--time ()
+  "get time"
+  (format "%s %s" (all-the-icons-faicon "clock-o" :v-adjust 0.0)
+          (format-time-string "%I:%M %p" (current-time))))
+
 ;; consider using `file-system-info' in emacs 27
 (defun minibuffer-statusbar--disk-free ()
   "get disk usage"
-  (let* ((out (shell-command-to-string "df -h --output=pcent,used,size /"))
+  (let* ((out (shell-command-to-string "df -h --output=used,size /"))
          (strs (split-string (nth 1 (split-string out "\n")))))
-    (seq-let (percent used size) strs
-      (propertize (format " %s %s/%s" percent used size)
+    (seq-let (used size) strs
+      (propertize (format " %s/%s" used size)
                   'face '(:underline "green")))))
 
 (defun minibuffer-statusbar--memory ()
@@ -102,31 +105,44 @@
     (seq-let (tot avail swp-tot swp-free) parsed
       (let* ((mem (/ (* (- tot avail) 100) tot))
              (swp (/ (- swp-tot swp-free) 1000))
-             (swp-str (if (zerop swp) "" (format " %dMB Swapped" swp))))
-        (propertize (format " %d%%%s" mem swp-str)
-                    'face '(:underline "green"))))))
+             (swp-str (if (zerop swp) "" (format " %dMB Swapped" swp)))
+             (color (if (> mem 90) "red" nil))
+             (icon (all-the-icons-material "memory" :v-adjust -.1)))
+        (propertize (format "%s %d%%%s" icon mem swp-str)
+                    'face `(:foreground ,color))))))
 
 (defun minibuffer-statusbar--battery ()
   "get battery capacity"
-  ;; TODO make icon follow capacity
-  ;; TODO message when battery low
-  (propertize
-   (concat " " 
-           (string-trim
-            (minibuffer-statusbar--file-to-string 
-             "/sys/class/power_supply/cw2015-battery/capacity"))
-           "%")
-   'face '(:underline "green")))
+  (let* ((path "/sys/class/power_supply/cw2015-battery/")
+         (bat (string-to-number (minibuffer-statusbar--file-to-string
+                                 (concat path "capacity"))))
+         (status (string-trim (minibuffer-statusbar--file-to-string
+                               (concat path "status"))))
+         (i-chg (all-the-icons-alltheicon "battery-charging"))
+         (i-100 (all-the-icons-faicon "battery-full"))
+         (i-75 (all-the-icons-faicon "battery-three-quarters"))
+         (i-50 (all-the-icons-faicon "battery-half"))
+         (i-25 (all-the-icons-faicon "battery-quarter"))
+         (i-0 (all-the-icons-faicon "battery-empty" :v-adjust 0.0
+                                    :face 'all-the-icons-lred))
+         (icon (cond ((string= status "Charging") b-chg)
+                     ((> bat 88) i-100)
+                     ((> bat 63) i-75) 
+                     ((> bat 38) i-50) 
+                     ((> bat 15) i-25) 
+                     (t          i-0))))
+    (if (>= bat 5)
+        (message "%s battery at %d%%!!!"
+                 (all-the-icons-faicon "exclamation-triangle" :v-adjust 0.0)
+                 bat))
+    (format "%s %d%%" icon bat)))
 
 (defun minibuffer-statusbar--cpu-temp ()
   "get cpu temperature in deg C"
-  (propertize
-   (concat " "
-           (substring (string-trim
-                       (minibuffer-statusbar--file-to-string 
-                        "/sys/class/thermal/thermal_zone0/temp"))
-                      0 -3) "°C")
-   'face '(:underline "blue")))
+  (let* ((temp-str (minibuffer-statusbar--file-to-string
+                    "/sys/class/thermal/thermal_zone0/temp"))
+         (temp (/ (string-to-number temp-str) 1000)))
+  (propertize (format " %d°C" temp) 'face '(:underline "green"))))
 
 ;; https://stackoverflow.com/questions/23367857/accurate-calculation-of-cpu-usage-given-in-percentage-in-linux
 (defun minibuffer-statusbar--cpu-freq ()
@@ -178,7 +194,7 @@
     (insert 
      (let ((str (apply 'concat minibuffer-statusbar--strings)))
        (concat (make-string (- (frame-text-cols)
-                               (+ (string-width str) 4)) ? ) ;; right pad 2 spaces
+                               (+ (string-width str) 6)) ? ) ;; right pad 6 spaces
                str)))))
 
 (defun minibuffer-statusbar--refresh-interval ()
