@@ -1,0 +1,50 @@
+~minibuffer-statusbar~ displays a statusbar in the minibuffer when the
+minibuffer window is not already used for other things.
+
+* Motivation
+It is based off of the [[https://elpa.gnu.org/packages/minibuffer-line.html][~minibuffer-line~ package]]. but instead of using the
+~format-mode-line~ function to format the statusbar string
+~minibuffer-statusbar~ uses a custom format since the mode line format
+specifiers don't make sense in a statusbar. Furthermore while ~format-mode-line~
+uses a global timer to refresh the string at some interval
+~minibuffer-statusbar~ allows setting per function timer intervals since the
+time only needs to be updated every 60 seconds while a cpu utilization monitor
+should probably be updated every few seconds. This saves on the resources needed
+to run the statusbar.
+
+I was also inspired to use [[https://github.com/domtronn/all-the-icons.el][all-the-icons.el]] by this [[https://www.reddit.com/r/emacs/comments/d3kmf3/exwm_status_bar_echoarea_w_icons/][reddit post]].
+
+* Usage
+#+begin_src emacs-lisp
+(require 'minibuffer-statusbar)
+(minibuffer-statusbar-mode t)
+#+end_src
+
+You can customize the statusbar by setting ~minibuffer-statusbar-line~
+
+Its default value is
+#+begin_src emacs-lisp
+'( "  "
+(minibuffer-statusbar--disk-free . 30) "   "
+(minibuffer-statusbar--battery . 30)
+"                                                   "
+(minibuffer-statusbar--memory . 5) "   "
+(minibuffer-statusbar--cpu-freq . 3) "   "
+(minibuffer-statusbar--cpu-temp . 10)
+"                                                 "
+(minibuffer-statusbar--time . 60) "   "
+(minibuffer-statusbar--date . 3600))
+#+end_src
+
+Currently this works well for my specific machine but is certainly *not*
+portable. I may make it more portable in the future but the functions are
+all relatively easy to customize yourself.
+
+* Similar Packages
+- [[https://elpa.gnu.org/packages/minibuffer-line.html][minibuffer-line]]
+- [[https://github.com/dakra/statusbar.el][statusbar.el]] which uses [[https://github.com/tumashu/posframe][posframe]] to overlay the statusbar in the bottom right.
+- [[https://github.com/Bad-ptr/common-header-mode-line.el][common-header-mode-line.el]] 
+- [[https://github.com/kiennq/emacs-mini-modeline][emacs-mini-modeline]]
+- [[https://github.com/manateelazycat/awesome-tray][awesome-tray]]
+- [[https://github.com/tautologyclub/feebleline][feebleline]]
+- [[https://github.com/zk-phi/symon][symon]]

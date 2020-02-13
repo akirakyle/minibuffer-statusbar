@@ -5,7 +5,7 @@
 ;; Author: Akira Kyle <akira@akirakyle.com>
 ;; Keywords: minibuffer statusbar
 ;; Version: 0.1
-;; Package-Requires: ((posframe "3.0.0"))
+;; Package-Requires: ((all-the-icons "3.0.0"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -26,10 +26,10 @@
 
 ;;; Commentary:
 
-;; Display a statusbar in the bottom right of the minibuffer when the minibuffer
-;; window is not already used for other things
+;; Display a statusbar in the minibuffer when the minibuffer window is not
+;; already used for other things
 
-;; See README.md for more details
+;; See README.org for more details
 
 ;;; Code:
 
@@ -43,14 +43,21 @@
   :group 'convenience)
 
 (defcustom minibuffer-statusbar-line
-  '((minibuffer-statusbar--battery . 30) " | "
-    (minibuffer-statusbar--disk-free . 30) " | "
-    (minibuffer-statusbar--memory . 5) " | "
-    (minibuffer-statusbar--cpu-freq . 3) " | "
-    (minibuffer-statusbar--cpu-temp . 10) " | "
-    (minibuffer-statusbar--date . 3600) " | "
-    (minibuffer-statusbar--time . 60))
-  "blah"
+  '( "  "
+    (minibuffer-statusbar--disk-free . 30) "   "
+    (minibuffer-statusbar--battery . 30)
+    "                                                   "
+    (minibuffer-statusbar--memory . 5) "   "
+    (minibuffer-statusbar--cpu-freq . 3) "   "
+    (minibuffer-statusbar--cpu-temp . 10)
+    "                                                 "
+    (minibuffer-statusbar--time . 60) "   "
+    (minibuffer-statusbar--date . 3600))
+  "List items to show on the statusbar line list
+
+items can either be a string in which case it is inserted as is
+or a list where the car is a function to run and the cdr is the
+interval in seconds."
   :type 'list)
 
 ;;; Variables
@@ -117,24 +124,32 @@
                                  (concat path "capacity"))))
          (status (string-trim (minibuffer-statusbar--file-to-string
                                (concat path "status"))))
-         (i-chg (all-the-icons-alltheicon "battery-charging" :height 1.0 :v-adjust 0.0))
-         (i-100 (all-the-icons-faicon "battery-full"))
-         (i-75 (all-the-icons-faicon "battery-three-quarters"))
-         (i-50 (all-the-icons-faicon "battery-half"))
-         (i-25 (all-the-icons-faicon "battery-quarter"))
-         (i-0 (all-the-icons-faicon "battery-empty" :v-adjust 0.0
-                                    :face 'all-the-icons-lred))
+         (i-chg (all-the-icons-alltheicon
+                 "battery-charging" :height 1.0 :v-adjust 0.0))
+         (i-100 (all-the-icons-faicon
+                 "battery-full" :height 0.8 :v-adjust 0.0))
+         (i-75 (all-the-icons-faicon
+                "battery-three-quarters" :height 0.8 :v-adjust 0.0))
+         (i-50 (all-the-icons-faicon
+                "battery-half" :height 0.8 :v-adjust 0.0))
+         (i-25 (all-the-icons-faicon
+                "battery-quarter" :height 0.8 :v-adjust 0.0))
+         (i-0 (all-the-icons-faicon
+               "battery-empty" :height 0.8 :v-adjust 0.0))
          (icon (cond ((string= status "Charging") i-chg)
                      ((> bat 88) i-100)
                      ((> bat 63) i-75) 
                      ((> bat 38) i-50) 
                      ((> bat 15) i-25) 
-                     (t          i-0))))
+                     (t          i-0)))
+         (str (format "%s %d%%" icon bat)))
     (if (<= bat 5)
         (message "%s battery at %d%%!!!"
                  (all-the-icons-faicon "exclamation-triangle" :v-adjust 0.0)
                  bat))
-    (format "%s %d%%" icon bat)))
+    (if (<= bat 15) 
+        (add-face-text-property 0 (length str) '(:foreground "red") nil str))
+    str))
 
 (defun minibuffer-statusbar--cpu-temp ()
   "get cpu temperature in deg C"
@@ -174,7 +189,8 @@
                                 (concat cpu ":")))
                      (diff-used (- (nth 1 curr) (nth 1 prev)))
                      (diff-idle (- (nth 2 curr) (nth 2 prev)))
-                     (percent (/ (* 100 diff-used) (+ diff-used diff-idle))))
+                     (diff-tot (+ diff-used diff-idle))
+                     (percent (if (= diff-tot 0) 0 (/ (* 100 diff-used) diff-tot))))
                 (format "%s%2d%%" cpu-str percent))))
            (strs (seq-mapn fmt-percent-fn cpus minibuffer-statusbar--prev-cpus)))
       (setq minibuffer-statusbar--prev-cpus cpus)
@@ -196,11 +212,13 @@
 (defun minibuffer-statusbar--update ()
   (with-current-buffer minibuffer-statusbar--buffer
     (erase-buffer)
-    (insert 
-     (let ((str (apply 'concat minibuffer-statusbar--strings)))
-       (concat (make-string (- (frame-text-cols)
-                               (+ (string-width str) 6)) ? ) ;; right pad 6 spaces
-               str)))))
+    (insert (apply 'concat minibuffer-statusbar--strings))))
+    ;;(insert 
+    ;; (let ((str (apply 'concat minibuffer-statusbar--strings)))
+    ;;   (concat (make-string (/ (- (frame-text-cols) (string-width str)) 2) ? )
+    ;;   ;;(concat (make-string (- (frame-text-cols)
+    ;;   ;;                        (+ (string-width str) 6)) ? ) ;; right pad 6 spaces
+    ;;           str)))))
 
 (defun minibuffer-statusbar--refresh-interval ()
   (seq-reduce
