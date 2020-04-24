@@ -113,8 +113,12 @@ interval in seconds."
              (swp (/ (- swp-tot swp-free) 1000))
              (swp-str (if (zerop swp) "" (format " %dMB Swapped" swp)))
              (str (format "%s %d%%%s" icon mem swp-str)))
-        (if (> mem 90)
+        (if (> mem 80)
             (add-face-text-property 0 (length str) '(:foreground "red") nil str))
+        (if (> mem 90)
+            (message "%s memory at %d%%!!!"
+                     (all-the-icons-faicon "exclamation-triangle" :v-adjust 0.0)
+                 mem))
         str))))
 
 (defun minibuffer-statusbar--battery ()
