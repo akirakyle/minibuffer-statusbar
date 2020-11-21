@@ -43,16 +43,23 @@
   :group 'convenience)
 
 (defcustom minibuffer-statusbar-line
-  '( "  "
-    (minibuffer-statusbar--disk-free . 30) "   "
-    (minibuffer-statusbar--battery . 30)
-    "                                                   "
-    (minibuffer-statusbar--memory . 5) "   "
-    (minibuffer-statusbar--cpu-freq . 3) "   "
-    (minibuffer-statusbar--cpu-temp . 10)
-    "                                                 "
-    (minibuffer-statusbar--time . 60) "   "
-    (minibuffer-statusbar--date . 3600))
+  '( "        "
+     (minibuffer-statusbar--time . 60)
+     "   "
+     (minibuffer-statusbar--date . 3600)
+     "           "
+     (minibuffer-statusbar--disk-free . 30)
+     "   "
+     (minibuffer-statusbar--memory . 5)
+     "           "
+     (minibuffer-statusbar--cpu-freq . 3)
+     "   "
+     (minibuffer-statusbar--cpu-temp . 10)
+     "           "
+     (minibuffer-statusbar--battery . 30)
+     "   "
+     (minibuffer-statusbar--network . 30)
+     )
   "List items to show on the statusbar line list
 
 items can either be a string in which case it is inserted as is
@@ -111,11 +118,12 @@ interval in seconds."
       (let* ((icon (all-the-icons-material "memory" :height 0.8 :v-adjust -0.1))
              (mem (/ (* (- tot avail) 100) tot))
              (swp (/ (- swp-tot swp-free) 1000))
-             (swp-str (if (zerop swp) "" (format " %dMB Swapped" swp)))
+             ;;(swp-str (if (zerop swp) "" (format " %dMB Swapped" swp)))
+             (swp-str (format " %dMB Swapped" swp))
              (str (format "%s %d%%%s" icon mem swp-str)))
         (if (> mem 80)
             (add-face-text-property 0 (length str) '(:foreground "red") nil str))
-        (if (> mem 90)
+        (if (> mem 95)
             (message "%s memory at %d%%!!!"
                      (all-the-icons-faicon "exclamation-triangle" :v-adjust 0.0)
                  mem))
@@ -162,8 +170,8 @@ interval in seconds."
                     "/sys/class/thermal/thermal_zone0/temp"))
          (temp (/ (string-to-number temp-str) 1000))
          (str (format "%s %d°C" icon temp)))
-    (if (> temp 65)
-        (add-face-text-property 0 (length str) '(:foreground "red") nil str))
+    (when (> temp 65)
+      (add-face-text-property 0 (length str) '(:foreground "red") nil str))
       str))
 
 ;; https://stackoverflow.com/questions/23367857/accurate-calculation-of-cpu-usage-given-in-percentage-in-linux
@@ -199,6 +207,22 @@ interval in seconds."
            (strs (seq-mapn fmt-percent-fn cpus minibuffer-statusbar--prev-cpus)))
       (setq minibuffer-statusbar--prev-cpus cpus)
       (mapconcat 'identity strs " "))))
+
+(require 'ewnc)
+;;(ewnc-load-backend 'nm)
+
+(defun minibuffer-statusbar--network ()
+  "get network status"
+  (let* ((icon (all-the-icons-faicon "wifi" :height 0.8 :v-adjust 0.0))
+         (connecting (if (enwc-check-connecting-p)
+                         " [Connecting...]"
+                       "                "))
+         (_ (add-face-text-property
+                      0  (length connecting) '(:foreground red) nil connecting))
+         (props (enwc-get-nw-props (enwc-get-current-nw-id)))
+         (essid (cdr (assoc 'essid props)))
+         (strength (cdr (assoc 'strength props))))
+    (format "%s %2d%% %s%s" icon strength essid connecting)))
 
 (defun minibuffer-statusbar--update-item (fn strcons)
   (lambda () (setcar strcons (funcall fn))))
