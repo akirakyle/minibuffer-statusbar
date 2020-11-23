@@ -208,21 +208,26 @@ interval in seconds."
       (setq minibuffer-statusbar--prev-cpus cpus)
       (mapconcat 'identity strs " "))))
 
-(require 'ewnc)
-;;(ewnc-load-backend 'nm)
+(require 'enwc)
+(setq enwc-wireless-device "wlan0")
+(enwc--setup-load-default-backend)
 
 (defun minibuffer-statusbar--network ()
   "get network status"
-  (let* ((icon (all-the-icons-faicon "wifi" :height 0.8 :v-adjust 0.0))
-         (connecting (if (enwc-check-connecting-p)
-                         " [Connecting...]"
-                       "                "))
-         (_ (add-face-text-property
-                      0  (length connecting) '(:foreground red) nil connecting))
-         (props (enwc-get-nw-props (enwc-get-current-nw-id)))
-         (essid (cdr (assoc 'essid props)))
-         (strength (cdr (assoc 'strength props))))
-    (format "%s %2d%% %s%s" icon strength essid connecting)))
+  (let ((icon (all-the-icons-faicon "wifi" :height 0.8 :v-adjust 0.0))
+        (nw-id (enwc-get-current-nw-id)))
+    (if nw-id
+        (let* ((props (enwc-get-nw-props nw-id))
+               (essid (cdr (assoc 'essid props)))
+               (strength (cdr (assoc 'strength props)))
+               (str (format "%s %2d%% %s" icon strength essid)))
+          (when (enwc-check-connecting-p)
+            (add-face-text-property 0 (length str) '(:foreground "blue")
+                                    nil str))
+          str)
+      (let ((str (format "%s Disconnected" icon)))
+        (add-face-text-property 0 (length str) '(:foreground "red") nil str)
+        str))))
 
 (defun minibuffer-statusbar--update-item (fn strcons)
   (lambda () (setcar strcons (funcall fn))))
